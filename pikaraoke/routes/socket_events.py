@@ -18,6 +18,26 @@ def setup_socket_events(socketio):
         socketio: The SocketIO instance.
     """
 
+    def drop_stale_connections() -> None:
+        """Forget splash screens that vanished without a disconnect event.
+
+        A browser that is killed, sleeps, or loses the network may never fire
+        disconnect. Those sids would otherwise keep the master role pinned to a
+        client that can no longer report song endings, leaving every later
+        splash screen a slave and the queue stuck.
+        """
+        for sid in list(splash_connections):
+            if not socketio.server.manager.is_connected(sid, "/"):
+                splash_connections.discard(sid)
+                logging.info(f"Dropping stale splash screen: {sid}")
+
+    def assign_master(sid: str) -> None:
+        """Give the master role to a splash screen."""
+        global master_splash_id
+        master_splash_id = sid
+        socketio.emit("splash_role", "master", room=sid)
+        logging.info(f"Master splash screen assigned: {sid}")
+
     @socketio.on("end_song")
     def end_song(reason: str) -> None:
         """Handle end_song WebSocket event from client.
@@ -43,18 +63,17 @@ def setup_socket_events(socketio):
     @socketio.on("register_splash")
     def register_splash() -> None:
         """Handle splash screen registration and assign master/slave roles."""
-        global master_splash_id
         sid = request.sid
         splash_connections.add(sid)
         logging.info(f"Splash screen registered: {sid}")
 
-        if master_splash_id is None:
-            master_splash_id = sid
-            socketio.emit("splash_role", "master", room=sid)
-            logging.info(f"Master splash screens assigned: {sid}")
-        else:
+        drop_stale_connections()
+
+        if master_splash_id in splash_connections and master_splash_id != sid:
             socketio.emit("splash_role", "slave", room=sid)
-            logging.info(f"Slave splash screens assigned: {sid}")
+            logging.info(f"Slave splash screen assigned: {sid}")
+        else:
+            assign_master(sid)
 
     @socketio.on("playback_position")
     def handle_playback_position(position: float) -> None:
@@ -63,7 +82,6 @@ def setup_socket_events(socketio):
         Args:
             position: Current playback position in seconds.
         """
-        global master_splash_id
         sid = request.sid
         if sid == master_splash_id:
             k = get_karaoke_instance()
@@ -76,15 +94,19 @@ def setup_socket_events(socketio):
         """Handle Socket.IO client disconnection and manage splash role handover."""
         global master_splash_id
         sid = request.sid
-        if sid in splash_connections:
-            splash_connections.remove(sid)
-            logging.info(f"Splash screen disconnected: {sid}")
-            if sid == master_splash_id:
-                master_splash_id = None
-                logging.info("Master splash disconnected, electing new master")
-                if splash_connections:
-                    # Elect new master from remaining connections
-                    new_master = next(iter(splash_connections))
-                    master_splash_id = new_master
-                    socketio.emit("splash_role", "master", room=new_master)
-                    logging.info(f"New master splash elected: {new_master}")
+        if sid not in splash_connections:
+            return
+
+        splash_connections.discard(sid)
+        logging.info(f"Splash screen disconnected: {sid}")
+
+        if sid != master_splash_id:
+            return
+
+        master_splash_id = None
+        logging.info("Master splash disconnected, electing new master")
+        drop_stale_connections()
+        if splash_connections:
+            assign_master(next(iter(splash_connections)))
+        else:
+            logging.info("No splash screens connected, master role is open")

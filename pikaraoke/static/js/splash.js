@@ -108,7 +108,11 @@ const endSong = async (reason = null, showScore = false) => {
     await startScore("/static/");
     isScoreShown = false;
   }
-  currentVideoUrl = null;
+  // Only the master ends songs server-side. A slave that cleared this would see
+  // the server still reporting the same song and reload it, playing it twice.
+  if (isMaster) {
+    currentVideoUrl = null;
+  }
   if (hlsInstance) {
     hlsInstance.destroy();
     hlsInstance = null;
