@@ -1,0 +1,14 @@
+{# Download status panel: active progress, pending downloads and errors.
+Rendered by static/download-status.js. Include on any page where download
+outcomes should be visible. #}
+<div id="downloads-section" style="display: none; margin-top: 30px; border-top: 1px solid #dbdbdb; padding-top: 20px">
+	{# MSG: Heading above the list of in-progress, pending and failed downloads. #}
+	<h3 class="title is-4">{% trans %}Download queue{% endtrans %}</h3>
+	<div id="downloads-container"></div>
+</div>
+<script>
+	// Re-wire after SPA navigation, which does not re-run scripts from <head>
+	if (window.DownloadStatus) {
+		window.DownloadStatus.init();
+	}
+</script>
