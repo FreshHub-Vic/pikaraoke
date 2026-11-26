@@ -78,12 +78,32 @@ class TestSongListValidation:
         song_file.touch()
         assert sl.is_valid_song(str(song_file)) is True
 
-    def test_is_valid_song_mp3(self, tmp_path):
-        """Test that .mp3 files are valid."""
+    def test_is_valid_song_mp3_with_cdg(self, tmp_path):
+        """Test that .mp3 files are valid when a .cdg sits next to them."""
         sl = SongList()
         song_file = tmp_path / "song.mp3"
         song_file.touch()
+        (tmp_path / "song.cdg").touch()
         assert sl.is_valid_song(str(song_file)) is True
+
+    def test_is_valid_song_mp3_without_cdg(self, tmp_path):
+        """Test that a bare .mp3 is rejected since playback requires a .cdg."""
+        sl = SongList()
+        song_file = tmp_path / "song.mp3"
+        song_file.touch()
+        assert sl.is_valid_song(str(song_file)) is False
+
+    def test_scan_directory_skips_mp3_without_cdg(self, tmp_path):
+        """Test that scanning excludes bare .mp3 files but keeps MP3+CDG pairs."""
+        sl = SongList()
+        (tmp_path / "video.mp4").touch()
+        (tmp_path / "bare.mp3").touch()
+        (tmp_path / "paired.mp3").touch()
+        (tmp_path / "paired.cdg").touch()
+        assert sl.scan_directory(str(tmp_path)) == 2
+        assert str(tmp_path / "video.mp4") in sl
+        assert str(tmp_path / "paired.mp3") in sl
+        assert str(tmp_path / "bare.mp3") not in sl
 
     def test_is_valid_song_zip(self, tmp_path):
         """Test that .zip files are valid (CDG format)."""
@@ -246,6 +266,7 @@ class TestSongListScanDirectory:
         (tmp_path / "song1.mp4").touch()
         (tmp_path / "song2.webm").touch()
         (tmp_path / "song3.mp3").touch()
+        (tmp_path / "song3.cdg").touch()
         (tmp_path / "readme.txt").touch()
 
         count = sl.scan_directory(str(tmp_path))
@@ -281,7 +302,7 @@ class TestSongListScanDirectory:
         [
             "Céline Dion - My Heart Will Go On---abc12345678.mp4",
             "Babymetal - ギミチョコ---dQw4w9WgXcQ.mp4",
-            "노래 제목---xyz98765432.mp3",
+            "노래 제목---xyz98765432.webm",
             "Édith Piaf - La Vie en Rose---mno55667788.mkv",
         ],
         ids=["french_accents", "japanese", "korean", "mixed_accents"],

@@ -96,6 +96,10 @@ class SongList:
     def is_valid_song(self, file_path: str) -> bool:
         """Check if a file path is a valid song file.
 
+        An .mp3 only counts as a song when a .cdg graphics file sits next to
+        it: playback resolves mp3 strictly as the MP3+CDG karaoke pair, so a
+        bare mp3 would be listed but fail the moment it is played.
+
         Args:
             file_path: Path to check.
 
@@ -103,7 +107,17 @@ class SongList:
             True if the file exists and has a valid extension.
         """
         ext = os.path.splitext(file_path)[1].lower()
-        return ext in self.VALID_EXTENSIONS and os.path.isfile(file_path)
+        if ext not in self.VALID_EXTENSIONS or not os.path.isfile(file_path):
+            return False
+        if ext == ".mp3":
+            return self._has_cdg_companion(file_path)
+        return True
+
+    @staticmethod
+    def _has_cdg_companion(file_path: str) -> bool:
+        """Return True when a .cdg file with the same base name exists."""
+        base_name = os.path.splitext(file_path)[0]
+        return any(os.path.isfile(base_name + ext) for ext in (".cdg", ".CDG", ".Cdg"))
 
     def add_if_valid(self, song_path: str) -> bool:
         """Add a song only if it's a valid song file and exists.
@@ -156,12 +170,10 @@ class SongList:
         files_found = []
         for dirpath, _dirnames, filenames in os.walk(directory):
             for filename in filenames:
-                ext = os.path.splitext(filename)[1].lower()
-                if ext in self.VALID_EXTENSIONS:
-                    file_path = os.path.join(dirpath, filename)
-                    if os.path.isfile(file_path):
-                        logging.debug(f"Found song: {filename}")
-                        files_found.append(file_path)
+                file_path = os.path.join(dirpath, filename)
+                if self.is_valid_song(file_path):
+                    logging.debug(f"Found song: {filename}")
+                    files_found.append(file_path)
 
         self.update(files_found)
         return len(files_found)

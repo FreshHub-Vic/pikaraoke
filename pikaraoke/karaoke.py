@@ -28,6 +28,7 @@ from pikaraoke.lib.get_platform import (
 )
 from pikaraoke.lib.network import get_ip
 from pikaraoke.lib.playback_controller import PlaybackController
+from pikaraoke.lib.playlist_manager import PlaylistManager
 from pikaraoke.lib.preference_manager import PreferenceManager
 from pikaraoke.lib.queue_manager import QueueManager
 from pikaraoke.lib.song_manager import SongManager
@@ -191,6 +192,10 @@ class Karaoke:
         self.bg_video_path = self.default_bg_video_path if bg_video_path is None else bg_video_path
         self.streaming_format = streaming_format
         self.socketio = socketio
+        # Splash screens registered over Socket.IO; the master reports song endings
+        self.splash_connections: set[str] = set()
+        self.master_splash_id: str | None = None
+        self._waiting_for_player = False
         self.url_override = url
         self.url = self.get_url()
 
@@ -239,6 +244,9 @@ class Karaoke:
             filename_from_path=SongManager.filename_from_path,
             get_available_songs=lambda: self.song_manager.songs,
         )
+
+        # Initialize saved playlists
+        self.playlist_manager = PlaylistManager()
 
         # Initialize and start download manager
         self.download_manager = DownloadManager(
@@ -482,7 +490,18 @@ class Karaoke:
                     self.reset_now_playing()
 
                 # Start next song from queue if not currently playing
-                if len(self.queue_manager.queue) > 0 and not self.playback_controller.is_playing:
+                queue_ready = (
+                    len(self.queue_manager.queue) > 0 and not self.playback_controller.is_playing
+                )
+                if queue_ready and not self.splash_connections:
+                    # Popping now would transcode, wait for a player, then skip the song
+                    if not self._waiting_for_player:
+                        logging.warning(
+                            f"Queue is waiting: no splash screen is connected. Open {self.url}/splash"
+                        )
+                        self._waiting_for_player = True
+                elif queue_ready:
+                    self._waiting_for_player = False
                     self.reset_now_playing()
                     # Splash delay between songs
                     splash_delay = self.preferences.get_or_default("splash_delay")
