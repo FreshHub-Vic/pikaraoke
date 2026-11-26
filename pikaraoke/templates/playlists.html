@@ -1,0 +1,188 @@
+{% extends 'base.html' %} {% block scripts %}
+<script>
+	$(function () {
+		// Filter the song picker as the user types
+		$("#library-filter").on("input", function () {
+			var term = $(this).val().toLowerCase();
+			$("#library-list .library-song").each(function () {
+				var match = $(this).data("title").toLowerCase().indexOf(term) !== -1;
+				$(this).toggle(match);
+			});
+			updateSelectedCount();
+		});
+
+		function updateSelectedCount() {
+			var total = $("#library-list input:checked").length;
+			$("#selected-count").text(total);
+			$("#save-playlist-button").prop("disabled", total === 0);
+		}
+
+		$("#library-list").on("change", "input", updateSelectedCount);
+
+		$("#clear-selection").on("click", function (e) {
+			e.preventDefault();
+			$("#library-list input:checked").prop("checked", false);
+			updateSelectedCount();
+		});
+
+		// Load a saved playlist into the editor so it can be modified and re-saved
+		$(".edit-playlist").on("click", function (e) {
+			e.preventDefault();
+			var songs = $(this).data("songs") || [];
+			// Compare values rather than building an attribute selector: song
+			// paths contain quotes and brackets that break CSS escaping.
+			var wanted = {};
+			$.each(songs, function (_i, file) {
+				wanted[file] = true;
+			});
+			$("#library-list input").each(function () {
+				this.checked = wanted[this.value] === true;
+			});
+			$("#playlist-name").val($(this).data("name"));
+			updateSelectedCount();
+			$("#playlist-editor")[0].scrollIntoView({ behavior: "smooth" });
+		});
+
+		$(".delete-playlist").on("click", function (e) {
+			e.preventDefault();
+			var name = $(this).data("name");
+			// MSG: Confirmation before deleting a saved playlist. %s is the playlist name.
+			if (window.confirm("{{ _('Delete the playlist') }} \"" + name + "\"?")) {
+				$(this).closest("form").submit();
+			}
+		});
+
+		updateSelectedCount();
+	});
+</script>
+{% endblock %} {% block header %}
+<h1>{% block title %}{{ title }}{% endblock %}</h1>
+{% endblock %} {% block content %}
+
+<div class="field">
+	{# MSG: Heading above the list of saved playlists. #}
+	<label class="label">{% trans %}Saved playlists{% endtrans %}</label>
+
+	{% if playlists %}
+	<ul class="playlist-list">
+		{% for name, songs in playlists.items() %}
+		<li class="box p-3 mb-2">
+			<div class="is-flex is-align-items-center is-flex-wrap-wrap">
+				<div class="is-flex-grow-1" style="min-width: 200px">
+					<b>{{ name }}</b>
+					<span class="is-size-7 has-text-grey ml-2">
+						{# MSG: Number of songs in a playlist. #}
+						{% trans count=songs|length %}{{ count }} song(s){% endtrans %}
+					</span>
+					{% set missing = songs | selectattr('missing') | list | length %}
+					{% if missing %}
+					<span class="tag is-warning is-light is-rounded ml-2">
+						{# MSG: Tag shown when songs in a playlist are no longer in the library. #}
+						{% trans count=missing %}{{ count }} missing{% endtrans %}
+					</span>
+					{% endif %}
+					<div class="is-size-7 has-text-grey mt-1">
+						{{ songs | map(attribute='title') | join(', ') | truncate(120) }}
+					</div>
+				</div>
+				<div class="is-flex is-align-items-center mt-2">
+					{# no-spa: these redirect to the queue page, and SPA navigation only swaps
+					the content box, which would drop the "added N songs" flash message #}
+					{# MSG: Button which adds a playlist's songs to the end of the queue. #}
+					<a class="button is-small is-info mr-2 no-spa" href="{{ url_for('playlists.load_playlist', name=name, mode='append') }}">
+						{% trans %}Append{% endtrans %}
+					</a>
+					{% if admin %}
+					{# MSG: Button which clears the queue and then loads a playlist into it. #}
+					<a class="button is-small is-warning mr-2 no-spa" href="{{ url_for('playlists.load_playlist', name=name, mode='replace') }}">
+						{% trans %}Replace queue{% endtrans %}
+					</a>
+					{% endif %}
+					{# MSG: Button which loads a playlist into the editor below for changing. #}
+					{# tojson escapes ' but not ", so the attribute must be single-quoted #}
+					<a
+						class="button is-small mr-2 edit-playlist"
+						href="#"
+						data-name="{{ name }}"
+						data-songs='{{ songs | map(attribute="file") | list | tojson }}'
+					>
+						{% trans %}Edit{% endtrans %}
+					</a>
+					{% if admin %}
+					<form method="POST" action="{{ url_for('playlists.delete_playlist', name=name) }}" style="display: inline">
+						{# MSG: Button which permanently deletes a saved playlist. #}
+						<a class="button is-small is-danger is-outlined delete-playlist" href="#" data-name="{{ name }}">
+							{% trans %}Delete{% endtrans %}
+						</a>
+					</form>
+					{% endif %}
+				</div>
+			</div>
+		</li>
+		{% endfor %}
+	</ul>
+	{% else %}
+	<div class="notification">
+		{# MSG: Shown when the user has not saved any playlists yet. #}
+		{% trans %}No playlists saved yet. Pick songs below, or save the current queue from the Queue page.{% endtrans %}
+	</div>
+	{% endif %}
+</div>
+
+<hr />
+
+<div class="field" id="playlist-editor">
+	{# MSG: Heading above the form which builds a playlist from the song library. #}
+	<label class="label">{% trans %}Create or edit a playlist{% endtrans %}</label>
+
+	<form method="POST" action="{{ url_for('playlists.save_playlist') }}">
+		<div class="field has-addons mb-2">
+			<div class="control is-expanded">
+				{# MSG: Placeholder for the playlist name input. #}
+				<input
+					class="input"
+					type="text"
+					id="playlist-name"
+					name="name"
+					maxlength="80"
+					required
+					placeholder="{{ _('Playlist name') }}"
+				/>
+			</div>
+			<div class="control">
+				<button type="submit" class="button is-primary" id="save-playlist-button">
+					{# MSG: Button which saves the selected songs as a playlist. #}
+					{% trans %}Save playlist{% endtrans %}
+				</button>
+			</div>
+		</div>
+
+		<div class="is-flex is-align-items-center mb-2">
+			<input class="input mr-2" type="text" id="library-filter" placeholder="{{ _('Filter songs') }}" />
+			<span class="is-size-7 has-text-grey" style="white-space: nowrap">
+				{# MSG: Count of songs currently ticked in the playlist editor. #}
+				<b id="selected-count">0</b> {% trans %}selected{% endtrans %}
+			</span>
+			{# MSG: Link which unticks every song in the playlist editor. #}
+			<a class="is-size-7 has-text-danger ml-3" href="#" id="clear-selection">{% trans %}Clear{% endtrans %}</a>
+		</div>
+
+		{% if library %}
+		<div id="library-list" class="box p-3" style="max-height: 420px; overflow-y: auto">
+			{% for song in library %}
+			<label class="checkbox is-block library-song py-1" data-title="{{ song.title }}">
+				<input type="checkbox" name="songs" value="{{ song.file }}" />
+				{{ song.title }}
+			</label>
+			{% endfor %}
+		</div>
+		{% else %}
+		<div class="notification">
+			{# MSG: Shown in the playlist editor when the song library is empty. #}
+			{% trans %}Your library is empty. Download some songs first.{% endtrans %}
+		</div>
+		{% endif %}
+	</form>
+</div>
+
+{% endblock %}

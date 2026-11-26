@@ -412,6 +412,8 @@
             $('#search').addClass('is-active');
         } else if (path === '/browse' || path.startsWith('/browse')) {
             $('#browse').addClass('is-active');
+        } else if (path === '/playlists') {
+            $('#playlists').addClass('is-active');
         } else if (path === '/info') {
             $('#info').addClass('is-active');
         }

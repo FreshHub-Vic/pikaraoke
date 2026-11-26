@@ -330,6 +330,18 @@
       window.closeNowPlayingOptions();
   };
 
+  // Save the current queue as a named playlist
+  $(document).off('click', '#save-queue-as-playlist');
+  $(document).on('click', '#save-queue-as-playlist', function(e) {
+      e.preventDefault();
+      // MSG: Prompt asking for a name when saving the queue as a playlist.
+      var name = window.prompt("{{ _('Name this playlist') }}");
+      if (name !== null && name.trim() !== "") {
+          $('#save-playlist-name').val(name.trim());
+          $('#save-playlist-form').submit();
+      }
+  });
+
   // Initialize
   $(function() {
     window.queuePage_getQueue();
@@ -387,6 +399,12 @@
 			{% trans %}Add <input id="randomNumberInput" class="input mx-2 p-2" pattern="\d*" maxlength="2" value="3" min="1" max="99" style="width: 42px" /> random songs{% endtrans %}
 	</div>
 	<div>
+		<form method="POST" action="{{ url_for('playlists.save_playlist') }}" id="save-playlist-form" style="display: inline">
+			<input type="hidden" name="name" id="save-playlist-name" />
+			{# MSG: Button which saves the songs currently in the queue as a named playlist. #}
+			<a class="button is-link is-outlined mr-2" href="#" id="save-queue-as-playlist">
+			<i class="icon icon-list-bullet mr-1"></i>{% trans %}Save as playlist{% endtrans %}</a>
+		</form>
 		<a class="button is-danger is-outlined confirm-clear" href="/queue/edit?action=clear">
 		<i class="icon icon-trash-empty mr-1"></i>{% trans %}Clear all{% endtrans %}</a>
 	</div>
